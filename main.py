@@ -5,6 +5,7 @@ import time
 
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.events import EVENT_JOB_ERROR
 
 import analyzer
 import alert_monitor
@@ -26,11 +27,19 @@ history_db = spread_history.SpreadHistoryDB()
 arb_monitor = alert_monitor.ArbAlertMonitor()
 
 
+def _on_job_error(event):
+    logger.error("Scheduled job failed: %s", event.exception, exc_info=event.exception)
+
+
 def send_alert() -> None:
     data = ws_client.get_latest()
     if not data:
         logger.warning("No WebSocket data available, skipping alert")
         return
+
+    age = ws_client.data_age_seconds()
+    if age > 300:
+        logger.warning("WebSocket data is %.0fs stale, alert may be inaccurate", age)
 
     top5 = analyzer.top5_by_timeframe(data)
     opportunities = arb_detector.detect(data)
@@ -77,6 +86,7 @@ def run_bot() -> None:
     send_alert()
 
     scheduler = BackgroundScheduler(timezone="UTC")
+    scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
     scheduler.add_job(send_alert, "cron", minute=0)
     scheduler.add_job(send_paper_snapshot, "cron", hour="0,8,16")
     scheduler.add_job(check_arb_alerts, "cron", minute="*/15")

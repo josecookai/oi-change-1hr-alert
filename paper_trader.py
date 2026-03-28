@@ -26,19 +26,11 @@ from config import (
     MAX_HOLD_HOURS,
     PAPER_POSITION_SIZE,
     PAPER_TRADE_FILE,
-    TAKER_FEE_BINANCE,
-    TAKER_FEE_BYBIT,
-    TAKER_FEE_HYPERLIQUID,
+    TAKER_FEES,
 )
 from arb_detector import ArbOpportunity
 
 logger = logging.getLogger(__name__)
-
-TAKER_FEES: dict[str, float] = {
-    "binance": TAKER_FEE_BINANCE,
-    "bybit": TAKER_FEE_BYBIT,
-    "hyperliquid": TAKER_FEE_HYPERLIQUID,
-}
 
 
 @dataclass
@@ -204,8 +196,21 @@ class PaperTrader:
                     closed.append(PaperPosition(**raw))
                     logger.info("Closed paper position: %s reason=%s net_pnl=$%.2f", raw["symbol"], reason, PaperPosition(**raw).net_pnl)
 
+            self._prune_closed()
             _save(self._path, self._state)
             return closed
+
+    def _prune_closed(self, max_closed: int = 100) -> None:
+        """Keep only the most recent max_closed closed positions to prevent unbounded growth."""
+        positions = self._positions()
+        closed_indices = [i for i, p in enumerate(positions) if p["status"] == "closed"]
+        if len(closed_indices) <= max_closed:
+            return
+        # Remove oldest closed positions (keep the last max_closed)
+        to_remove = closed_indices[:-max_closed]
+        for idx in reversed(to_remove):  # reverse to preserve indices
+            positions.pop(idx)
+        logger.info("Pruned %d old closed positions", len(to_remove))
 
     def snapshot(self) -> dict:
         """Return summary stats across all positions."""

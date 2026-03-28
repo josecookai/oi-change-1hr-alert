@@ -10,31 +10,19 @@ short on the exchange paying the highest (or most positive) funding.
 Net per 8h = spread * position_size.
 """
 
+import itertools
 import logging
 from dataclasses import dataclass
 
 from config import (
     ARB_TOP_N,
     MIN_ARB_SPREAD,
-    TAKER_FEE_BINANCE,
-    TAKER_FEE_BYBIT,
-    TAKER_FEE_HYPERLIQUID,
+    TAKER_FEES,
 )
 
 logger = logging.getLogger(__name__)
 
 EXCHANGES = ("binance", "bybit", "hyperliquid")
-
-# Taker fees per side (one-way), configurable via .env
-# Source: official fee schedules at VIP0 / base tier (no discount applied)
-#   Binance USDM futures: 0.050%
-#   Bybit USDT perpetual: 0.055%
-#   Hyperliquid:          0.035%
-TAKER_FEES: dict[str, float] = {
-    "binance": TAKER_FEE_BINANCE,
-    "bybit": TAKER_FEE_BYBIT,
-    "hyperliquid": TAKER_FEE_HYPERLIQUID,
-}
 
 
 @dataclass
@@ -123,16 +111,9 @@ def detect(
 
     opportunities: list[ArbOpportunity] = []
 
-    # Check all pairs of exchanges
-    exchange_pairs = [
-        ("binance", "bybit"),
-        ("binance", "hyperliquid"),
-        ("bybit", "hyperliquid"),
-    ]
-
     seen: set[tuple[str, str, str]] = set()  # (symbol, long_ex, short_ex)
 
-    for ex_a, ex_b in exchange_pairs:
+    for ex_a, ex_b in itertools.combinations(EXCHANGES, 2):
         common = set(by_exchange[ex_a]) & set(by_exchange[ex_b])
         for sym in common:
             ca = by_exchange[ex_a][sym]

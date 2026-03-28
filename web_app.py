@@ -44,8 +44,11 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
     # Enrich top 20 with real orderbook slippage
     arb_detector.enrich_with_slippage(opportunities, notional=notional, top_n=20)
 
-    # Build trend lookup without mutating ArbOpportunity objects
+    # Build trend lookup and inject into opportunity objects for template access
     trend_map = {(t.symbol, t.long_exchange, t.short_exchange): t for t in _history.trends()}
+    for opp in opportunities:
+        key = (opp.symbol, opp.long_exchange, opp.short_exchange)
+        opp._trend = trend_map.get(key)
 
     snap = _trader.snapshot()
     paper_positions = snap["open_positions"] + [

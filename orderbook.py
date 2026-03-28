@@ -200,13 +200,13 @@ class ArbSlippage:
 
     @property
     def net_per_interval_after_slippage(self) -> float:
-        """Net funding per interval minus full round-trip cost."""
-        from arb_detector import TAKER_FEES
+        """Net funding per interval minus full round-trip cost (fees + slippage)."""
+        from config import TAKER_FEES
         fee_rt = (TAKER_FEES[self.long_slip.exchange] + TAKER_FEES[self.short_slip.exchange]) * 2
-        return 0.0  # placeholder — caller must supply spread
+        return -(fee_rt + self.total_slippage_pct / 100)  # negative: cost only, caller adds spread
 
     def net_given_spread(self, spread: float) -> float:
-        from arb_detector import TAKER_FEES
+        from config import TAKER_FEES
         fee_rt = (TAKER_FEES[self.long_slip.exchange] + TAKER_FEES[self.short_slip.exchange]) * 2
         total_cost = fee_rt + self.full_cost_pct
         return (spread - total_cost) * self.notional

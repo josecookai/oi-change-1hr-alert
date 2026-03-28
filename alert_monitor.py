@@ -121,15 +121,15 @@ class ArbAlertMonitor:
         REASON_EMOJI = {"NEW_PAIR": "🆕", "SPIKE": "📈", "RECOVERED": "♻️"}
         REASON_LABEL = {"NEW_PAIR": "New opportunity", "SPIKE": "Spread spike", "RECOVERED": "Recovered"}
 
-        lines = [f"⚡ *Arb Alert* — {datetime.now(timezone.utc).strftime('%H:%M UTC')}"]
+        lines = [f"⚡ <b>Arb Alert</b> — {datetime.now(timezone.utc).strftime('%H:%M UTC')}"]
         for reason, o in alerts:
             long_ex = EX.get(o.long_exchange, o.long_exchange.upper())
             short_ex = EX.get(o.short_exchange, o.short_exchange.upper())
             net_str = f"+${o.net_per_10k_per_interval:.1f}/10k" if o.net_per_10k_per_interval > 0 else f"${o.net_per_10k_per_interval:.1f}/10k"
             lines.append(
-                f"{REASON_EMOJI[reason]} *{o.symbol}* `{long_ex}→{short_ex}` "
-                f"spread `{o.spread_pct:.3f}%` {net_str} "
-                f"_{REASON_LABEL[reason]}_"
+                f"{REASON_EMOJI[reason]} <b>{o.symbol}</b> <code>{long_ex}→{short_ex}</code> "
+                f"spread <code>{o.spread_pct:.3f}%</code> {net_str} "
+                f"<i>{REASON_LABEL[reason]}</i>"
             )
 
         telegram_bot.send("\n".join(lines))

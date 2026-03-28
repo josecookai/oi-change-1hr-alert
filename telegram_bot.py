@@ -1,5 +1,6 @@
 import logging
 import time
+from html import escape as html_escape
 
 import requests
 
@@ -14,7 +15,7 @@ def send(text: str, retries: int = 3) -> None:
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": text,
-        "parse_mode": "Markdown",
+        "parse_mode": "HTML",
     }
     for attempt in range(1, retries + 1):
         try:

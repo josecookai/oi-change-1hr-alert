@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 latest_data: dict = {}
 _lock = threading.Lock()
 _started = False
+_last_updated: float = 0.0
 
 
 def get_latest() -> dict:
@@ -20,10 +21,20 @@ def get_latest() -> dict:
         return dict(latest_data)
 
 
+def data_age_seconds() -> float:
+    """Return seconds since last WebSocket message. Returns inf if never received."""
+    with _lock:
+        if _last_updated == 0.0:
+            return float("inf")
+        return time.time() - _last_updated
+
+
 def _set_latest(data: dict) -> None:
+    global _last_updated
     with _lock:
         latest_data.clear()
         latest_data.update(data)
+        _last_updated = time.time()
 
 
 async def _listen() -> None:

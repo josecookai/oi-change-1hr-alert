@@ -55,6 +55,35 @@ def build_arb_section(opportunities: list[ArbOpportunity]) -> str:
     return "\n".join(lines)
 
 
+def build_paper_snapshot(snap: dict) -> str:
+    open_pos = snap["open_positions"]
+    lines = ["📒 *Paper Trade Snapshot*"]
+    if open_pos:
+        lines.append(f"_Open positions: {len(open_pos)}_")
+        lines.append("`Symbol        Entry%  Hold   Funding   NetPnL`")
+        for p in open_pos:
+            sym = p.symbol[:12].ljust(12)
+            entry = f"{p.entry_spread * 100:.3f}%".rjust(6)
+            hold = f"{p.hold_hours:.1f}h".rjust(5)
+            funding = f"${p.funding_collected:.1f}".rjust(8)
+            net = f"{'+'if p.net_pnl >= 0 else ''}${p.net_pnl:.1f}".rjust(7)
+            lines.append(f"`{sym} {entry} {hold} {funding} {net}`")
+    else:
+        lines.append("_No open positions_")
+
+    lines.append("")
+    closed = snap["closed_count"]
+    win_rate = snap["win_rate"] * 100
+    total_net = snap["total_net_pnl"]
+    avg_hold = snap["avg_hold_hours"]
+    sign = "+" if total_net >= 0 else ""
+    lines.append(
+        f"Closed: {closed} | Win rate: {win_rate:.0f}% | "
+        f"Total net: {sign}${total_net:.1f} | Avg hold: {avg_hold:.1f}h"
+    )
+    return "\n".join(lines)
+
+
 def build_message(top5: dict[str, list[dict]], opportunities: list[ArbOpportunity] | None = None) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     parts = [f"📊 *OI Change Alert* — {now}\n"]

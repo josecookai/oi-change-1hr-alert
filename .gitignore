@@ -1,4 +1,5 @@
 .env
+paper_positions.json
 __pycache__/
 *.pyc
 *.pyo

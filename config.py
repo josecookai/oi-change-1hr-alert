@@ -17,3 +17,9 @@ ARB_TOP_N = int(os.getenv("ARB_TOP_N", "5"))
 TAKER_FEE_BINANCE = float(os.getenv("TAKER_FEE_BINANCE", "0.0005"))    # 0.05%
 TAKER_FEE_BYBIT = float(os.getenv("TAKER_FEE_BYBIT", "0.00055"))       # 0.055%
 TAKER_FEE_HYPERLIQUID = float(os.getenv("TAKER_FEE_HYPERLIQUID", "0.00035"))  # 0.035%
+
+# v1.2 paper trading
+PAPER_POSITION_SIZE = float(os.getenv("PAPER_POSITION_SIZE", "10000"))   # USDT per position
+CLOSE_ARB_SPREAD = float(os.getenv("CLOSE_ARB_SPREAD", "0.0001"))        # close when spread < 0.01%
+MAX_HOLD_HOURS = float(os.getenv("MAX_HOLD_HOURS", "72"))                 # max hold time in hours
+PAPER_TRADE_FILE = os.getenv("PAPER_TRADE_FILE", "paper_positions.json")

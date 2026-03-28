@@ -32,3 +32,15 @@ SPREAD_HISTORY_HOURS = int(os.getenv("SPREAD_HISTORY_HOURS", "168"))  # 7 days
 ALERT_NEW_SPREAD = float(os.getenv("ALERT_NEW_SPREAD", "0.002"))      # 0.2% threshold for new-pair alert
 ALERT_SPIKE_PCT = float(os.getenv("ALERT_SPIKE_PCT", "50"))            # alert if spread jumps 50%+
 ALERT_MIN_NET_PER_10K = float(os.getenv("ALERT_MIN_NET_PER_10K", "0"))  # must be net positive after fees
+
+# v1.3 live trading
+LIVE_TRADING_ENABLED = os.getenv("LIVE_TRADING_ENABLED", "false").lower() == "true"
+LIVE_POSITION_SIZE = float(os.getenv("LIVE_POSITION_SIZE", "500"))
+MAX_LIVE_POSITIONS = int(os.getenv("MAX_LIVE_POSITIONS", "3"))
+MAX_SINGLE_EXCHANGE_EXPOSURE = float(os.getenv("MAX_SINGLE_EXCHANGE_EXPOSURE", "2000"))
+LIVE_MIN_SPREAD = float(os.getenv("LIVE_MIN_SPREAD", "0.002"))
+LIVE_MIN_OI = float(os.getenv("LIVE_MIN_OI", "5000000"))
+LIVE_CLOSE_SPREAD = float(os.getenv("LIVE_CLOSE_SPREAD", "0.0002"))
+LIVE_MAX_HOLD_HOURS = float(os.getenv("LIVE_MAX_HOLD_HOURS", "72"))
+MAX_LOSS_PER_POSITION = float(os.getenv("MAX_LOSS_PER_POSITION", "30"))
+LIVE_POSITIONS_DB = os.getenv("LIVE_POSITIONS_DB", "live_positions.db")

@@ -126,3 +126,155 @@ class TestCommands:
              patch("telegram_commands.ws_client.get_latest", return_value={}):
             telegram_commands._handle(_make_message("/arb@OIMonitorBot"))
         mock_reply.assert_called_once()
+
+
+class TestLiveCommands:
+    """Tests for /live, /stop, /exposure, /enable, /disable, /confirm commands."""
+
+    @pytest.fixture(autouse=True)
+    def clear_pending(self):
+        """Ensure _pending_actions is clean before and after each test."""
+        telegram_commands._pending_actions.clear()
+        yield
+        telegram_commands._pending_actions.clear()
+
+    def _make_live_position(self, symbol="BTCUSDT", long_ex="bybit", short_ex="binance",
+                            entry_spread=0.00312, hold_hours=4.2, net_pnl=2.1):
+        p = MagicMock()
+        p.symbol = symbol
+        p.long_exchange = long_ex
+        p.short_exchange = short_ex
+        p.entry_spread = entry_spread
+        p.hold_hours = hold_hours
+        p.net_pnl = net_pnl
+        return p
+
+    # ------------------------------------------------------------------ /live
+    def test_live_no_trader(self):
+        """When live_trader is not importable, reply with a graceful error message."""
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=None):
+            telegram_commands._handle(_make_message("/live"))
+        text = mock_reply.call_args[0][1]
+        assert "not available" in text.lower()
+
+    def test_live_no_positions(self):
+        mock_trader = MagicMock()
+        mock_trader.open_positions.return_value = []
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/live"))
+        text = mock_reply.call_args[0][1]
+        assert "No open positions" in text
+
+    def test_live_with_positions(self):
+        pos1 = self._make_live_position("BTC", "bybit", "binance", 0.00312, 4.2, 2.1)
+        pos2 = self._make_live_position("ETH", "binance", "hyperliquid", 0.00198, 1.0, -0.3)
+        mock_trader = MagicMock()
+        mock_trader.open_positions.return_value = [pos1, pos2]
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/live"))
+        text = mock_reply.call_args[0][1]
+        assert "Live Positions" in text
+        assert "2 open" in text
+        assert "BTC" in text
+        assert "ETH" in text
+        assert "Total net PnL" in text
+        # Net is 2.1 + (-0.3) = 1.8
+        assert "+$1.8" in text
+
+    def test_live_history(self):
+        hist1 = self._make_live_position("BTC", "bybit", "binance", 0.003, 8.0, 5.0)
+        hist2 = self._make_live_position("ETH", "binance", "hyperliquid", 0.002, 3.0, -1.0)
+        mock_trader = MagicMock()
+        mock_trader.closed_positions.return_value = [hist1, hist2]
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/live history"))
+        text = mock_reply.call_args[0][1]
+        assert "Live History" in text
+        assert "BTC" in text
+        mock_trader.closed_positions.assert_called_once_with(limit=10)
+
+    # ------------------------------------------------------------------ /stop
+    def test_stop_unknown_symbol(self):
+        mock_trader = MagicMock()
+        mock_trader.emergency_close.return_value = False
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/stop XYZUSDT"))
+        text = mock_reply.call_args[0][1]
+        assert "No open live position" in text or "not found" in text.lower() or "XYZUSDT" in text
+
+    def test_stop_valid_symbol(self):
+        mock_trader = MagicMock()
+        mock_trader.emergency_close.return_value = True
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/stop BTCUSDT"))
+        text = mock_reply.call_args[0][1]
+        assert "BTCUSDT" in text
+        mock_trader.emergency_close.assert_called_once_with("BTCUSDT")
+
+    # -------------------------------------------------------------- /exposure
+    def test_exposure_output(self):
+        mock_trader = MagicMock()
+        mock_trader.get_exposure.return_value = {
+            "binance": {"side": "long", "used_usdt": 500.0, "limit_usdt": 2000.0},
+            "bybit": {"side": "short", "used_usdt": 1000.0, "limit_usdt": 2000.0},
+            "hl": {"side": "—", "used_usdt": 0.0, "limit_usdt": 2000.0},
+        }
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/exposure"))
+        text = mock_reply.call_args[0][1]
+        assert "Exchange Exposure" in text
+        assert "BINANCE" in text
+        assert "BYBIT" in text
+        # 25% bar for binance (500/2000)
+        assert "25%" in text
+        # 50% bar for bybit (1000/2000)
+        assert "50%" in text
+
+    # --------------------------------------------------------- /enable + /confirm
+    def test_enable_requires_confirm(self):
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=MagicMock()):
+            telegram_commands._handle(_make_message("/enable"))
+        text = mock_reply.call_args[0][1]
+        assert "/confirm" in text
+        assert telegram_commands._pending_actions.get(ALLOWED_CHAT) == "enable_live"
+
+    def test_enable_confirm_flow(self):
+        mock_trader = MagicMock()
+        with patch.object(telegram_commands, "_reply"), \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/enable"))
+        assert telegram_commands._pending_actions.get(ALLOWED_CHAT) == "enable_live"
+
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/confirm"))
+        text = mock_reply.call_args[0][1]
+        assert "enabled" in text.lower()
+        mock_trader.set_enabled.assert_called_once_with(True)
+        assert ALLOWED_CHAT not in telegram_commands._pending_actions
+
+    # --------------------------------------------------------------- /disable
+    def test_disable_command(self):
+        mock_trader = MagicMock()
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=mock_trader):
+            telegram_commands._handle(_make_message("/disable"))
+        text = mock_reply.call_args[0][1]
+        assert "disabled" in text.lower()
+        mock_trader.set_enabled.assert_called_once_with(False)
+
+    # --------------------------------------------------------------- /confirm without pending
+    def test_confirm_without_pending(self):
+        with patch.object(telegram_commands, "_reply") as mock_reply, \
+             patch.object(telegram_commands, "_get_live_trader", return_value=MagicMock()):
+            telegram_commands._handle(_make_message("/confirm"))
+        text = mock_reply.call_args[0][1]
+        assert "No pending action" in text or "pending" in text.lower()

@@ -50,6 +50,18 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
     snap = _trader.snapshot()
     paper_positions = snap["open_positions"]
 
+    # Live trading data (optional module)
+    try:
+        from live_trader import get_trader as get_live_trader
+        from config import LIVE_TRADING_ENABLED, MAX_SINGLE_EXCHANGE_EXPOSURE
+        live_snap = get_live_trader().snapshot()
+        live_enabled = LIVE_TRADING_ENABLED
+        live_exposure_limit = MAX_SINGLE_EXCHANGE_EXPOSURE
+    except ImportError:
+        live_snap = None
+        live_enabled = False
+        live_exposure_limit = 2000.0
+
     # Stats
     ex_pairs = {}
     for o in opportunities:
@@ -81,6 +93,9 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
         persistent_trends=persistent_trends,
         stats=stats,
         ts=ts,
+        live_snap=live_snap,
+        live_enabled=live_enabled,
+        live_exposure_limit=live_exposure_limit,
     )
     return HTMLResponse(html)
 
@@ -150,6 +165,29 @@ async def api_paper():
         "win_rate": snap["win_rate"],
         "avg_hold_hours": round(snap["avg_hold_hours"], 1),
     }
+
+
+@app.get("/api/live")
+async def api_live_positions():
+    """JSON: open live positions."""
+    # safe import — live_trader may not be present yet
+    try:
+        from live_trader import get_trader as get_live_trader
+        snap = get_live_trader().snapshot()
+    except ImportError:
+        snap = {"open_positions": [], "closed_count": 0, "total_net_pnl": 0.0,
+                "win_rate": 0.0, "exposure_by_exchange": {}}
+    return snap
+
+
+@app.get("/api/live/exposure")
+async def api_live_exposure():
+    """JSON: exchange exposure summary."""
+    try:
+        from live_trader import get_trader as get_live_trader
+        return get_live_trader().get_exposure()
+    except ImportError:
+        return {}
 
 
 @app.get("/health")

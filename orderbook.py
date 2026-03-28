@@ -168,8 +168,8 @@ def hl_slippage(symbol: str, notional: float) -> tuple[SlippageResult, SlippageR
     # levels[0] = bids (descending), levels[1] = asks (ascending)
     raw_bids = book["levels"][0]
     raw_asks = book["levels"][1]
-    bids = [(float(l["px"]), float(l["sz"])) for l in raw_bids]
-    asks = [(float(l["px"]), float(l["sz"])) for l in raw_asks]
+    bids = [(float(lvl["px"]), float(lvl["sz"])) for lvl in raw_bids]
+    asks = [(float(lvl["px"]), float(lvl["sz"])) for lvl in raw_asks]
     if not asks or not bids:
         return None
     mid = (asks[0][0] + bids[0][0]) / 2
@@ -201,8 +201,6 @@ class ArbSlippage:
     @property
     def net_per_interval_after_slippage(self) -> float:
         """Net funding per interval minus full round-trip cost."""
-        from arb_detector import TAKER_FEES
-        fee_rt = (TAKER_FEES[self.long_slip.exchange] + TAKER_FEES[self.short_slip.exchange]) * 2
         return 0.0  # placeholder — caller must supply spread
 
     def net_given_spread(self, spread: float) -> float:

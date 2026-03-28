@@ -11,7 +11,6 @@ from pathlib import Path
 import jinja2
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-from fastapi.requests import Request
 
 import arb_detector
 import ws_client

@@ -19,10 +19,9 @@ restart means we have no historical context.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
-import formatter
 import telegram_bot
 from arb_detector import ArbOpportunity
 from config import (

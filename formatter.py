@@ -1,4 +1,10 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from arb_detector import ArbOpportunity
 
 
 def _fmt_oi(value: float) -> str:
@@ -32,7 +38,24 @@ def _section(tf: str, contracts: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def build_message(top5: dict[str, list[dict]]) -> str:
+def build_arb_section(opportunities: list[ArbOpportunity]) -> str:
+    EX_ABBR = {"binance": "BNB", "bybit": "BYBIT", "hyperliquid": "HL"}
+    lines = ["🔀 *Cross-Exchange Arb Opportunities*"]
+    lines.append("`Symbol        Long    Short  Spread  $/10k  Annual`")
+    for o in opportunities:
+        sym = o.symbol[:12].ljust(12)
+        long_ex = EX_ABBR.get(o.long_exchange, o.long_exchange[:5]).ljust(5)
+        short_ex = EX_ABBR.get(o.short_exchange, o.short_exchange[:5]).ljust(5)
+        spread = f"{o.spread_pct:.3f}%".rjust(7)
+        net = f"+${o.net_per_10k_per_interval:.1f}".rjust(6)
+        annual = f"{o.annual_roi_pct:.0f}%".rjust(6)
+        lines.append(f"`{sym} {long_ex} {short_ex} {spread} {net} {annual}`")
+    if not opportunities:
+        lines.append("_No opportunities above threshold_")
+    return "\n".join(lines)
+
+
+def build_message(top5: dict[str, list[dict]], opportunities: list[ArbOpportunity] | None = None) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     parts = [f"📊 *OI Change Alert* — {now}\n"]
     for tf in ["15m", "1h", "4h", "24h"]:
@@ -41,4 +64,6 @@ def build_message(top5: dict[str, list[dict]]) -> str:
             parts.append(_section(tf, contracts))
         else:
             parts.append(f"⏱ *{tf}* — no data")
+    if opportunities is not None:
+        parts.append(build_arb_section(opportunities))
     return "\n\n".join(parts)

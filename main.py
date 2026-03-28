@@ -4,6 +4,7 @@ import time
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 import analyzer
+import arb_detector
 import formatter
 import telegram_bot
 import ws_client
@@ -22,7 +23,8 @@ def send_alert() -> None:
         return
 
     top5 = analyzer.top5_by_timeframe(data)
-    message = formatter.build_message(top5)
+    opportunities = arb_detector.detect(data)
+    message = formatter.build_message(top5, opportunities)
     telegram_bot.send(message)
     logger.info("Alert sent")
 

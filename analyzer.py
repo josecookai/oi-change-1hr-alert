@@ -20,8 +20,8 @@ def _build_enriched(data: dict) -> list[dict]:
         sym = c.get("symbol")
         row = dict(c)
         src = extra.get(sym, {})
-        row.setdefault("funding_rate", src.get("funding_rate", 0.0))
-        row.setdefault("price_change_24h", src.get("price_change_24h", 0.0))
+        row["funding_rate"] = row.get("funding_rate") or src.get("funding_rate", 0.0)
+        row["price_change_24h"] = row.get("price_change_24h") or src.get("price_change_24h", 0.0)
         enriched.append(row)
     return enriched
 

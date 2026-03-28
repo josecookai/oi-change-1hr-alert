@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OI Monitor — Arb Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d1117; color: #c9d1d9; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; }
+
+    header { padding: 16px 24px; border-bottom: 1px solid #21262d; display: flex; align-items: center; gap: 16px; }
+    header h1 { font-size: 16px; color: #58a6ff; letter-spacing: 0.05em; }
+    .ts { color: #6e7681; font-size: 11px; margin-left: auto; }
+
+    .stats { display: flex; gap: 12px; padding: 14px 24px; border-bottom: 1px solid #21262d; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 6px; padding: 10px 16px; min-width: 120px; }
+    .stat .label { color: #6e7681; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .stat .value { color: #f0f6fc; font-size: 18px; font-weight: 600; margin-top: 2px; }
+    .stat .sub { color: #6e7681; font-size: 10px; margin-top: 1px; }
+
+    .filters { padding: 12px 24px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #21262d; }
+    .filters label { color: #6e7681; font-size: 11px; }
+    .filters select, .filters input { background: #161b22; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: inherit; }
+    .filters select:focus, .filters input:focus { outline: none; border-color: #58a6ff; }
+
+    .section { padding: 16px 24px; }
+    .section-title { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: right; padding: 6px 10px; color: #6e7681; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid #21262d; white-space: nowrap; }
+    th:first-child, th:nth-child(2), th:nth-child(3) { text-align: left; }
+    td { padding: 6px 10px; border-bottom: 1px solid #161b22; text-align: right; white-space: nowrap; }
+    td:first-child, td:nth-child(2), td:nth-child(3) { text-align: left; }
+    tr:hover td { background: #161b22; }
+
+    .sym { color: #f0f6fc; font-weight: 600; }
+    .ex-long  { color: #3fb950; }
+    .ex-short { color: #f85149; }
+    .spread-hi { color: #58a6ff; font-weight: 600; }
+    .spread-md { color: #a5d6ff; }
+    .spread-lo { color: #6e7681; }
+    .net-pos { color: #3fb950; }
+    .net-neg { color: #6e7681; }
+    .be-fast { color: #3fb950; }
+    .be-mid  { color: #d29922; }
+    .be-slow { color: #6e7681; }
+    .rate-neg { color: #3fb950; }
+    .rate-pos { color: #f85149; }
+    .rate-zero { color: #6e7681; }
+
+    .paper-section { margin-top: 24px; }
+    .pos-open  { color: #3fb950; }
+    .pos-pnl-pos { color: #3fb950; font-weight: 600; }
+    .pos-pnl-neg { color: #f85149; }
+
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+    .badge-green { background: rgba(63,185,80,0.15); color: #3fb950; }
+    .badge-red   { background: rgba(248,81,73,0.15);  color: #f85149; }
+    .badge-blue  { background: rgba(88,166,255,0.15); color: #58a6ff; }
+
+    .auto-refresh { color: #6e7681; font-size: 10px; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #3fb950; margin-right: 4px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="dot"></span>
+  <h1>OI Monitor — Arb Dashboard</h1>
+  <span class="auto-refresh">auto-refresh 30s</span>
+  <span class="ts">{{ ts }} UTC</span>
+</header>
+
+<div class="stats">
+  <div class="stat">
+    <div class="label">Total Opportunities</div>
+    <div class="value">{{ stats.total }}</div>
+    <div class="sub">spread &gt; {{ stats.min_spread_pct }}%</div>
+  </div>
+  <div class="stat">
+    <div class="label">Best Spread</div>
+    <div class="value">{{ stats.best_spread }}</div>
+    <div class="sub">{{ stats.best_symbol }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Net Positive</div>
+    <div class="value">{{ stats.net_positive }}</div>
+    <div class="sub">after taker fees</div>
+  </div>
+  <div class="stat">
+    <div class="label">BYBIT→BNB</div>
+    <div class="value">{{ stats.by_bi }}</div>
+    <div class="sub">dominant direction</div>
+  </div>
+  <div class="stat">
+    <div class="label">BNB→BYBIT</div>
+    <div class="value">{{ stats.bi_by }}</div>
+    <div class="sub"></div>
+  </div>
+  <div class="stat">
+    <div class="label">BYBIT→HL</div>
+    <div class="value">{{ stats.by_hl }}</div>
+    <div class="sub"></div>
+  </div>
+  <div class="stat">
+    <div class="label">Paper Positions</div>
+    <div class="value">{{ stats.open_positions }}</div>
+    <div class="sub">net PnL ${{ stats.total_pnl }}</div>
+  </div>
+</div>
+
+<div class="filters">
+  <label>Min Spread</label>
+  <select id="min-spread" onchange="filterTable()">
+    <option value="0">All</option>
+    <option value="0.05" selected>≥ 0.05%</option>
+    <option value="0.1">≥ 0.10%</option>
+    <option value="0.2">≥ 0.20%</option>
+    <option value="0.5">≥ 0.50%</option>
+  </select>
+  <label>Exchange Pair</label>
+  <select id="ex-filter" onchange="filterTable()">
+    <option value="">All</option>
+    <option value="bybit/binance">BYBIT → BINANCE</option>
+    <option value="binance/bybit">BINANCE → BYBIT</option>
+    <option value="bybit/hyperliquid">BYBIT → HL</option>
+    <option value="binance/hyperliquid">BINANCE → HL</option>
+    <option value="hyperliquid/bybit">HL → BYBIT</option>
+    <option value="hyperliquid/binance">HL → BINANCE</option>
+  </select>
+  <label>Net Only</label>
+  <input type="checkbox" id="net-only" onchange="filterTable()" />
+  <label style="margin-left:4px">Symbol</label>
+  <input type="text" id="sym-search" placeholder="search..." oninput="filterTable()" style="width:100px" />
+</div>
+
+<div class="section">
+  <div class="section-title">Delta-Neutral Arb Opportunities</div>
+  <table id="arb-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Symbol</th>
+        <th>Direction</th>
+        <th>Long Rate</th>
+        <th>Short Rate</th>
+        <th>Spread</th>
+        <th>Net / $10k</th>
+        <th>Break-even</th>
+        <th>Annual</th>
+        <th>Long OI</th>
+        <th>Short OI</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for o in opportunities %}
+    <tr data-spread="{{ o.spread_pct }}" data-pair="{{ o.long_exchange }}/{{ o.short_exchange }}" data-net="{{ o.net_per_10k_per_interval }}" data-sym="{{ o.symbol }}">
+      <td style="color:#6e7681">{{ loop.index }}</td>
+      <td class="sym">{{ o.symbol }}</td>
+      <td>
+        <span class="ex-long">{{ o.long_exchange | upper }}</span>
+        <span style="color:#6e7681"> → </span>
+        <span class="ex-short">{{ o.short_exchange | upper }}</span>
+      </td>
+      <td class="{{ 'rate-neg' if o.long_rate < 0 else ('rate-pos' if o.long_rate > 0 else 'rate-zero') }}">
+        {{ "%+.4f%%" | format(o.long_rate * 100) }}
+      </td>
+      <td class="{{ 'rate-neg' if o.short_rate < 0 else ('rate-pos' if o.short_rate > 0 else 'rate-zero') }}">
+        {{ "%+.4f%%" | format(o.short_rate * 100) }}
+      </td>
+      <td class="{{ 'spread-hi' if o.spread_pct >= 0.3 else ('spread-md' if o.spread_pct >= 0.1 else 'spread-lo') }}">
+        {{ "%.3f%%" | format(o.spread_pct) }}
+      </td>
+      <td class="{{ 'net-pos' if o.net_per_10k_per_interval > 0 else 'net-neg' }}">
+        {{ "%+.1f" | format(o.net_per_10k_per_interval) }}
+      </td>
+      <td class="{{ 'be-fast' if o.breakeven_periods < 0.5 else ('be-mid' if o.breakeven_periods < 1 else 'be-slow') }}">
+        {{ "%.2fx" | format(o.breakeven_periods) }}
+      </td>
+      <td style="color:#8b949e">{{ "%.0f%%" | format(o.annual_roi_pct) }}</td>
+      <td style="color:#6e7681">{{ "$%.1fM" | format(o.long_oi_usdt / 1e6) }}</td>
+      <td style="color:#6e7681">{{ "$%.1fM" | format(o.short_oi_usdt / 1e6) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if paper_positions %}
+<div class="section paper-section">
+  <div class="section-title">Paper Trade Positions</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Symbol</th>
+        <th>Direction</th>
+        <th>Entry Spread</th>
+        <th>Hold</th>
+        <th>Periods</th>
+        <th>Funding</th>
+        <th>Fee</th>
+        <th>Net PnL</th>
+        <th>ROI</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for p in paper_positions %}
+    <tr>
+      <td class="sym">{{ p.symbol }}</td>
+      <td>
+        <span class="ex-long">{{ p.long_exchange | upper }}</span>
+        <span style="color:#6e7681"> → </span>
+        <span class="ex-short">{{ p.short_exchange | upper }}</span>
+      </td>
+      <td>{{ "%.3f%%" | format(p.entry_spread * 100) }}</td>
+      <td>{{ "%.1fh" | format(p.hold_hours) }}</td>
+      <td>{{ p.funding_periods }}</td>
+      <td style="color:#a5d6ff">${{ "%.2f" | format(p.funding_collected) }}</td>
+      <td style="color:#6e7681">${{ "%.2f" | format(p.fee_paid) }}</td>
+      <td class="{{ 'pos-pnl-pos' if p.net_pnl >= 0 else 'pos-pnl-neg' }}">${{ "%+.2f" | format(p.net_pnl) }}</td>
+      <td class="{{ 'pos-pnl-pos' if p.roi_pct >= 0 else 'pos-pnl-neg' }}">{{ "%+.3f%%" | format(p.roi_pct) }}</td>
+      <td><span class="badge {{ 'badge-green' if p.status == 'open' else 'badge-red' }}">{{ p.status }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+function filterTable() {
+  const minSpread = parseFloat(document.getElementById('min-spread').value) || 0;
+  const exFilter = document.getElementById('ex-filter').value.toLowerCase();
+  const netOnly = document.getElementById('net-only').checked;
+  const symSearch = document.getElementById('sym-search').value.toLowerCase();
+  const rows = document.querySelectorAll('#arb-table tbody tr');
+  rows.forEach(row => {
+    const spread = parseFloat(row.dataset.spread);
+    const pair = row.dataset.pair;
+    const net = parseFloat(row.dataset.net);
+    const sym = row.dataset.sym.toLowerCase();
+    const show = spread >= minSpread
+      && (!exFilter || pair === exFilter)
+      && (!netOnly || net > 0)
+      && (!symSearch || sym.includes(symSearch));
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+// Auto-refresh every 30s
+setTimeout(() => location.reload(), 30000);
+filterTable();
+</script>
+
+</body>
+</html>

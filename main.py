@@ -1,7 +1,10 @@
 import logging
+import os
+import threading
 import time
 
-from apscheduler.schedulers.blocking import BlockingScheduler
+import uvicorn
+from apscheduler.schedulers.background import BackgroundScheduler
 
 import analyzer
 import arb_detector
@@ -28,7 +31,6 @@ def send_alert() -> None:
     top5 = analyzer.top5_by_timeframe(data)
     opportunities = arb_detector.detect(data)
 
-    # v1.2: open new positions, close stale ones
     trader.scan(opportunities)
     trader.close_stale(opportunities)
 
@@ -53,18 +55,31 @@ def send_paper_snapshot() -> None:
     logger.info("Paper trade snapshot sent")
 
 
-def main() -> None:
-    logger.info("Starting OI Alert bot (v1.2)...")
+def run_bot() -> None:
+    logger.info("Starting OI Alert bot (v1.3)...")
     ws_client.start_background()
-
-    # Send immediately on startup
     send_alert()
 
-    scheduler = BlockingScheduler(timezone="UTC")
-    scheduler.add_job(send_alert, "cron", minute=0)           # every hour
-    scheduler.add_job(send_paper_snapshot, "cron", hour="0,8,16")  # every 8h
-    logger.info("Scheduler started — OI alert every hour, paper snapshot every 8h")
+    scheduler = BackgroundScheduler(timezone="UTC")
+    scheduler.add_job(send_alert, "cron", minute=0)
+    scheduler.add_job(send_paper_snapshot, "cron", hour="0,8,16")
     scheduler.start()
+    logger.info("Scheduler started — OI alert every hour, paper snapshot every 8h")
+
+    # Keep bot thread alive
+    while True:
+        time.sleep(60)
+
+
+def main() -> None:
+    # Start bot in background thread
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+
+    # Start web dashboard (blocks)
+    port = int(os.getenv("PORT", "8000"))
+    logger.info("Starting dashboard on port %d", port)
+    uvicorn.run("web_app:app", host="0.0.0.0", port=port, log_level="warning")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ import logging
 import os
 import tempfile
 import threading
+from tempfile import NamedTemporaryFile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -87,10 +88,17 @@ def _load(path: Path) -> dict:
 
 
 def _save(path: Path, state: dict) -> None:
-    """Atomic write: write to temp file then rename to avoid corruption."""
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, indent=2))
-    os.replace(tmp, path)
+    """Atomic write via NamedTemporaryFile + os.replace.
+    Using NamedTemporaryFile in the same directory ensures os.replace is an
+    atomic rename (same filesystem) and the OS cleans up the temp file if we
+    crash before the rename completes.
+    """
+    with NamedTemporaryFile(
+        mode="w", dir=path.parent, suffix=".tmp", delete=False
+    ) as f:
+        f.write(json.dumps(state, indent=2))
+        tmp_path = f.name
+    os.replace(tmp_path, path)
 
 
 def _entry_fee(long_ex: str, short_ex: str, size: float) -> float:

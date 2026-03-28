@@ -122,24 +122,24 @@ class SpreadHistoryDB:
             rows = con.execute("""
                 SELECT
                     s.symbol, s.long_exchange, s.short_exchange,
-                    COUNT(*)                    AS samples,
-                    AVG(s.spread)               AS avg_spread,
-                    MIN(s.spread)               AS min_spread,
-                    MAX(s.spread)               AS max_spread,
+                    COUNT(*)                      AS samples,
+                    AVG(s.spread)                 AS avg_spread,
+                    MIN(s.spread)                 AS min_spread,
+                    MAX(s.spread)                 AS max_spread,
                     (
                         SELECT spread FROM spread_snapshots
                         WHERE symbol=s.symbol
                           AND long_exchange=s.long_exchange
                           AND short_exchange=s.short_exchange
-                          AND ts >= ?
+                          AND ts >= :cutoff
                         ORDER BY ts DESC LIMIT 1
-                    )                           AS latest_spread,
+                    )                             AS latest_spread,
                     COUNT(DISTINCT (s.ts / 3600)) AS hours_seen
                 FROM spread_snapshots s
-                WHERE s.ts >= ?
+                WHERE s.ts >= :cutoff
                 GROUP BY s.symbol, s.long_exchange, s.short_exchange
                 ORDER BY avg_spread DESC
-            """, (cutoff, cutoff)).fetchall()
+            """, {"cutoff": cutoff}).fetchall()
 
         trends = []
         for r in rows:

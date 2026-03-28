@@ -11,7 +11,7 @@ Net per 8h = spread * position_size.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from config import (
     ARB_TOP_N,
@@ -180,26 +180,37 @@ def detect(
     return opportunities[:effective_top_n]
 
 
-def enrich_with_slippage(opportunities: list[ArbOpportunity], notional: float = 10_000, top_n: int = 20) -> None:
+def enrich_with_slippage(
+    opportunities: list[ArbOpportunity], notional: float = 10_000, top_n: int = 20
+) -> list[ArbOpportunity]:
     """
-    Fetch real orderbook depth and annotate top_n opportunities with slippage in-place.
-    Only enriches opportunities not already enriched.
+    Fetch real orderbook depth for top_n opportunities.
+    Returns a new list where enriched entries are replaced with immutable copies
+    (dataclasses.replace); un-enriched entries are returned as-is.
     Skips silently on API errors.
     """
     try:
         import orderbook as ob
     except ImportError:
-        return
+        return opportunities
 
-    for opp in opportunities[:top_n]:
-        if opp.slippage_enriched:
+    result: list[ArbOpportunity] = []
+    for i, opp in enumerate(opportunities):
+        if i >= top_n or opp.slippage_enriched:
+            result.append(opp)
             continue
         try:
             long_res = ob._FETCHERS.get(opp.long_exchange, lambda *a: None)(opp.symbol, notional)
             short_res = ob._FETCHERS.get(opp.short_exchange, lambda *a: None)(opp.symbol, notional)
             if long_res and short_res:
-                opp.long_slip_pct = long_res[0].slippage_pct   # buy on long exchange
-                opp.short_slip_pct = short_res[1].slippage_pct  # sell on short exchange
-                opp.slippage_enriched = True
+                result.append(replace(
+                    opp,
+                    long_slip_pct=long_res[0].slippage_pct,   # buy on long exchange
+                    short_slip_pct=short_res[1].slippage_pct,  # sell on short exchange
+                    slippage_enriched=True,
+                ))
+                continue
         except Exception as e:
             logger.debug("Slippage fetch failed for %s: %s", opp.symbol, e)
+        result.append(opp)
+    return result

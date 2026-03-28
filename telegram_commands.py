@@ -41,9 +41,9 @@ _HELP = (
 )
 
 
-def _get(method: str, **params) -> dict | None:
+def _get(method: str, http_timeout: int = 10, **params) -> dict | None:
     try:
-        r = requests.get(f"{_BASE}/{method}", params=params, timeout=10)
+        r = requests.get(f"{_BASE}/{method}", params=params, timeout=http_timeout)
         r.raise_for_status()
         return r.json()
     except Exception as exc:
@@ -65,7 +65,7 @@ def _reply(chat_id: str | int, text: str) -> None:
 def _handle(message: dict) -> None:
     chat_id = str(message.get("chat", {}).get("id", ""))
     if chat_id != _ALLOWED_CHAT:
-        logger.info("Ignored message from unauthorized chat %s", chat_id)
+        logger.debug("Ignored message from unauthorized chat %s", chat_id)
         return
 
     text: str = message.get("text", "").strip()
@@ -110,11 +110,23 @@ def _handle(message: dict) -> None:
             _reply(chat_id, "Unknown command. Type /help for available commands.")
 
 
+_LONG_POLL_TIMEOUT = 30  # seconds Telegram holds the connection open
+_HTTP_TIMEOUT = _LONG_POLL_TIMEOUT + 5  # HTTP client must outlast the long-poll
+
+
 def _poll_loop() -> None:
     offset: int | None = None
+    backoff = 1
     while True:
-        result = _get("getUpdates", offset=offset, timeout=30, allowed_updates=["message"])
+        result = _get(
+            "getUpdates",
+            http_timeout=_HTTP_TIMEOUT,
+            offset=offset,
+            timeout=_LONG_POLL_TIMEOUT,
+            allowed_updates=["message"],
+        )
         if result and result.get("ok"):
+            backoff = 1
             for update in result.get("result", []):
                 offset = update["update_id"] + 1
                 msg = update.get("message")
@@ -124,7 +136,9 @@ def _poll_loop() -> None:
                     except Exception as exc:
                         logger.error("Command handler error: %s", exc)
         else:
-            time.sleep(2)
+            # Exponential backoff on API errors / rate limits
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 60)
 
 
 def start_polling() -> None:

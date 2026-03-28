@@ -157,6 +157,7 @@
         <th>Net+Slip/$10k</th>
         <th>Net/$10k</th>
         <th>BEven</th>
+        <th>Ann. ROI</th>
         <th>Long OI</th>
         <th>Short OI</th>
         <th>Persist</th>
@@ -205,17 +206,21 @@
       <td class="{{ 'be-fast' if o.breakeven_periods < 0.5 else ('be-mid' if o.breakeven_periods < 1 else 'be-slow') }}">
         {{ "%.2fx" | format(o.breakeven_periods) }}
       </td>
+      <td class="{{ 'net-pos' if o.annual_roi_pct >= 50 else ('spread-md' if o.annual_roi_pct >= 20 else 'spread-lo') }}">
+        {{ "%.0f%%" | format(o.annual_roi_pct) }}
+      </td>
       <td style="color:#6e7681">{{ "$%.1fM" | format(o.long_oi_usdt / 1e6) }}</td>
       <td style="color:#6e7681">{{ "$%.1fM" | format(o.short_oi_usdt / 1e6) }}</td>
+      {% set trend = trend_map.get(o.symbol + '|' + o.long_exchange + '|' + o.short_exchange) %}
       <td>
-        {% if o._trend %}
-          {% if o._trend.is_persistent %}
-            <span class="badge badge-green" title="{{ '%.0f' | format(o._trend.persistence_pct) }}% of {{ o._trend.hours_seen }}h">
-              ✓ {{ "%.0f%%" | format(o._trend.persistence_pct) }}
+        {% if trend %}
+          {% if trend.is_persistent %}
+            <span class="badge badge-green" title="{{ '%.0f' | format(trend.persistence_pct) }}% of {{ trend.hours_seen }}h">
+              ✓ {{ "%.0f%%" | format(trend.persistence_pct) }}
             </span>
           {% else %}
-            <span class="badge badge-red" title="{{ o._trend.hours_seen }}h seen">
-              {{ "%.0f%%" | format(o._trend.persistence_pct) }}
+            <span class="badge badge-red" title="{{ trend.hours_seen }}h seen">
+              {{ "%.0f%%" | format(trend.persistence_pct) }}
             </span>
           {% endif %}
         {% else %}

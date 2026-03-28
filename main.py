@@ -13,6 +13,7 @@ import formatter
 import paper_trader
 import spread_history
 import telegram_bot
+import telegram_commands
 import ws_client
 
 logging.basicConfig(
@@ -72,8 +73,9 @@ def check_arb_alerts() -> None:
 
 
 def run_bot() -> None:
-    logger.info("Starting OI Alert bot (v1.3)...")
+    logger.info("Starting OI Alert bot (v1.4)...")
     ws_client.start_background()
+    telegram_commands.start_polling()
     send_alert()
 
     scheduler = BackgroundScheduler(timezone="UTC")

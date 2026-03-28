@@ -131,7 +131,11 @@
   </select>
   <label>Net Only</label>
   <input type="checkbox" id="net-only" onchange="filterTable()" />
-  <label style="margin-left:4px">Symbol</label>
+  <label>After Slippage</label>
+  <input type="checkbox" id="slip-only" onchange="filterTable()" />
+  <label>Min OI ($M)</label>
+  <input type="number" id="min-oi" value="0" min="0" step="5" style="width:60px" oninput="filterTable()" />
+  <label>Symbol</label>
   <input type="text" id="sym-search" placeholder="search..." oninput="filterTable()" style="width:100px" />
 </div>
 
@@ -146,16 +150,25 @@
         <th>Long Rate</th>
         <th>Short Rate</th>
         <th>Spread</th>
-        <th>Net / $10k</th>
-        <th>Break-even</th>
-        <th>Annual</th>
+        <th>Fee RT</th>
+        <th>Slip Long</th>
+        <th>Slip Short</th>
+        <th>Full Cost</th>
+        <th>Net+Slip/$10k</th>
+        <th>Net/$10k</th>
+        <th>BEven</th>
         <th>Long OI</th>
         <th>Short OI</th>
       </tr>
     </thead>
     <tbody>
     {% for o in opportunities %}
-    <tr data-spread="{{ o.spread_pct }}" data-pair="{{ o.long_exchange }}/{{ o.short_exchange }}" data-net="{{ o.net_per_10k_per_interval }}" data-sym="{{ o.symbol }}">
+    <tr data-spread="{{ o.spread_pct }}"
+        data-pair="{{ o.long_exchange }}/{{ o.short_exchange }}"
+        data-net="{{ o.net_per_10k_per_interval }}"
+        data-net-slip="{{ o.net_per_10k_after_slippage }}"
+        data-oi="{{ [o.long_oi_usdt, o.short_oi_usdt] | min / 1e6 }}"
+        data-sym="{{ o.symbol }}">
       <td style="color:#6e7681">{{ loop.index }}</td>
       <td class="sym">{{ o.symbol }}</td>
       <td>
@@ -172,13 +185,25 @@
       <td class="{{ 'spread-hi' if o.spread_pct >= 0.3 else ('spread-md' if o.spread_pct >= 0.1 else 'spread-lo') }}">
         {{ "%.3f%%" | format(o.spread_pct) }}
       </td>
+      <td style="color:#6e7681">{{ "%.3f%%" | format(o.round_trip_fee_pct * 100) }}</td>
+      <td class="{{ 'net-neg' if o.slippage_enriched else 'rate-zero' }}" title="{{ 'enriched' if o.slippage_enriched else 'not fetched' }}">
+        {{ ("%.3f%%" | format(o.long_slip_pct)) if o.slippage_enriched else "—" }}
+      </td>
+      <td class="{{ 'net-neg' if o.slippage_enriched else 'rate-zero' }}">
+        {{ ("%.3f%%" | format(o.short_slip_pct)) if o.slippage_enriched else "—" }}
+      </td>
+      <td class="{{ 'net-neg' if o.slippage_enriched and o.full_cost_pct * 100 > o.spread_pct else 'spread-md' }}">
+        {{ ("%.3f%%" | format(o.full_cost_pct * 100)) if o.slippage_enriched else "%.3f%%" | format(o.round_trip_fee_pct * 100) }}
+      </td>
+      <td class="{{ 'net-pos' if o.net_per_10k_after_slippage > 0 else 'net-neg' }}">
+        {{ ("%+.1f" | format(o.net_per_10k_after_slippage)) if o.slippage_enriched else "—" }}
+      </td>
       <td class="{{ 'net-pos' if o.net_per_10k_per_interval > 0 else 'net-neg' }}">
         {{ "%+.1f" | format(o.net_per_10k_per_interval) }}
       </td>
       <td class="{{ 'be-fast' if o.breakeven_periods < 0.5 else ('be-mid' if o.breakeven_periods < 1 else 'be-slow') }}">
         {{ "%.2fx" | format(o.breakeven_periods) }}
       </td>
-      <td style="color:#8b949e">{{ "%.0f%%" | format(o.annual_roi_pct) }}</td>
       <td style="color:#6e7681">{{ "$%.1fM" | format(o.long_oi_usdt / 1e6) }}</td>
       <td style="color:#6e7681">{{ "$%.1fM" | format(o.short_oi_usdt / 1e6) }}</td>
     </tr>
@@ -234,16 +259,22 @@ function filterTable() {
   const minSpread = parseFloat(document.getElementById('min-spread').value) || 0;
   const exFilter = document.getElementById('ex-filter').value.toLowerCase();
   const netOnly = document.getElementById('net-only').checked;
+  const slipOnly = document.getElementById('slip-only').checked;
+  const minOi = parseFloat(document.getElementById('min-oi').value) || 0;
   const symSearch = document.getElementById('sym-search').value.toLowerCase();
   const rows = document.querySelectorAll('#arb-table tbody tr');
   rows.forEach(row => {
     const spread = parseFloat(row.dataset.spread);
     const pair = row.dataset.pair;
     const net = parseFloat(row.dataset.net);
+    const netSlip = parseFloat(row.dataset.netSlip);
+    const oi = parseFloat(row.dataset.oi);
     const sym = row.dataset.sym.toLowerCase();
     const show = spread >= minSpread
       && (!exFilter || pair === exFilter)
       && (!netOnly || net > 0)
+      && (!slipOnly || netSlip > 0)
+      && (minOi === 0 || oi >= minOi)
       && (!symSearch || sym.includes(symSearch));
     row.style.display = show ? '' : 'none';
   });

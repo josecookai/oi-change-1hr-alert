@@ -47,10 +47,27 @@ class ArbOpportunity:
     short_oi_usdt: float
     long_mark_price: float
     short_mark_price: float
+    # Optional slippage enrichment (set by enrich_with_slippage)
+    long_slip_pct: float = 0.0
+    short_slip_pct: float = 0.0
+    slippage_enriched: bool = False
 
     @property
     def spread_pct(self) -> float:
         return self.spread * 100
+
+    @property
+    def total_slippage_pct(self) -> float:
+        return self.long_slip_pct + self.short_slip_pct
+
+    @property
+    def full_cost_pct(self) -> float:
+        """Total round-trip cost: taker fees (open+close) + slippage (open only)."""
+        return self.round_trip_fee_pct + self.total_slippage_pct / 100
+
+    @property
+    def net_per_10k_after_slippage(self) -> float:
+        return (self.spread - self.full_cost_pct) * 10_000
 
     @property
     def round_trip_fee_pct(self) -> float:
@@ -148,3 +165,28 @@ def detect(data: dict) -> list[ArbOpportunity]:
 
     opportunities.sort(key=lambda o: o.spread, reverse=True)
     return opportunities[:ARB_TOP_N]
+
+
+def enrich_with_slippage(opportunities: list[ArbOpportunity], notional: float = 10_000, top_n: int = 20) -> None:
+    """
+    Fetch real orderbook depth and annotate top_n opportunities with slippage in-place.
+    Only enriches opportunities not already enriched.
+    Skips silently on API errors.
+    """
+    try:
+        import orderbook as ob
+    except ImportError:
+        return
+
+    for opp in opportunities[:top_n]:
+        if opp.slippage_enriched:
+            continue
+        try:
+            long_res = ob._FETCHERS.get(opp.long_exchange, lambda *a: None)(opp.symbol, notional)
+            short_res = ob._FETCHERS.get(opp.short_exchange, lambda *a: None)(opp.symbol, notional)
+            if long_res and short_res:
+                opp.long_slip_pct = long_res[0].slippage_pct   # buy on long exchange
+                opp.short_slip_pct = short_res[1].slippage_pct  # sell on short exchange
+                opp.slippage_enriched = True
+        except Exception as e:
+            logger.debug("Slippage fetch failed for %s: %s", opp.symbol, e)

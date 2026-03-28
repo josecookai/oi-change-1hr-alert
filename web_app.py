@@ -34,17 +34,19 @@ async def startup():
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(min_spread: float | None = None):
+async def dashboard(min_spread: float | None = None, notional: float = 10_000):
     data = ws_client.get_latest()
 
-    # Allow URL param to override config threshold
-    threshold = min_spread if min_spread is not None else MIN_ARB_SPREAD
+    # Show all opportunities, let JS filter client-side
     old_n, old_spread = arb_detector.ARB_TOP_N, arb_detector.MIN_ARB_SPREAD
     arb_detector.ARB_TOP_N = 999
-    arb_detector.MIN_ARB_SPREAD = max(threshold, 0.0001)
+    arb_detector.MIN_ARB_SPREAD = 0.0001
     opportunities = arb_detector.detect(data)
     arb_detector.ARB_TOP_N = old_n
     arb_detector.MIN_ARB_SPREAD = old_spread
+
+    # Enrich top 20 with real orderbook slippage
+    arb_detector.enrich_with_slippage(opportunities, notional=notional, top_n=20)
 
     snap = _trader.snapshot()
     paper_positions = snap["open_positions"] + [

@@ -16,6 +16,7 @@ from fastapi.requests import Request
 import arb_detector
 import ws_client
 from paper_trader import PaperTrader
+from spread_history import SpreadHistoryDB
 from config import MIN_ARB_SPREAD, ARB_TOP_N
 
 app = FastAPI(title="OI Monitor Dashboard")
@@ -26,6 +27,7 @@ _jinja_env = jinja2.Environment(
 )
 
 _trader = PaperTrader()
+_history = SpreadHistoryDB()
 
 
 @app.on_event("startup")
@@ -47,6 +49,12 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
 
     # Enrich top 20 with real orderbook slippage
     arb_detector.enrich_with_slippage(opportunities, notional=notional, top_n=20)
+
+    # Attach persistence trend data
+    trend_map = {(t.symbol, t.long_exchange, t.short_exchange): t for t in _history.trends()}
+    for opp in opportunities:
+        key = (opp.symbol, opp.long_exchange, opp.short_exchange)
+        opp._trend = trend_map.get(key)
 
     snap = _trader.snapshot()
     paper_positions = snap["open_positions"] + [
@@ -77,9 +85,12 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
+    persistent_trends = _history.top_persistent(min_persistence_pct=50.0, limit=10)
+
     html = _jinja_env.get_template("dashboard.html").render(
         opportunities=opportunities,
         paper_positions=paper_positions,
+        persistent_trends=persistent_trends,
         stats=stats,
         ts=ts,
     )
@@ -108,6 +119,37 @@ async def api_opportunities():
             "short_oi_usdt": o.short_oi_usdt,
         }
         for o in opps
+    ]
+
+
+@app.get("/api/trends")
+async def api_trends(window_hours: int = 24):
+    """JSON: spread persistence trends over last N hours."""
+    trends = _history.trends(window_hours=window_hours)
+    return [
+        {
+            "symbol": t.symbol,
+            "long_exchange": t.long_exchange,
+            "short_exchange": t.short_exchange,
+            "samples": t.samples,
+            "avg_spread_pct": round(t.avg_spread * 100, 4),
+            "min_spread_pct": round(t.min_spread * 100, 4),
+            "max_spread_pct": round(t.max_spread * 100, 4),
+            "hours_seen": t.hours_seen,
+            "persistence_pct": round(t.persistence_pct, 1),
+            "is_persistent": t.is_persistent,
+        }
+        for t in trends
+    ]
+
+
+@app.get("/api/history/{symbol}")
+async def api_history(symbol: str, long_exchange: str, short_exchange: str, hours: int = 24):
+    """JSON: time-series spread for a specific pair."""
+    records = _history.history_for(symbol, long_exchange, short_exchange, hours)
+    return [
+        {"ts": r.ts, "spread_pct": round(r.spread * 100, 4), "long_rate": r.long_rate, "short_rate": r.short_rate}
+        for r in records
     ]
 
 

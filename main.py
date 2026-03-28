@@ -10,6 +10,7 @@ import analyzer
 import arb_detector
 import formatter
 import paper_trader
+import spread_history
 import telegram_bot
 import ws_client
 
@@ -20,6 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 trader = paper_trader.PaperTrader()
+history_db = spread_history.SpreadHistoryDB()
 
 
 def send_alert() -> None:
@@ -33,6 +35,7 @@ def send_alert() -> None:
 
     trader.scan(opportunities)
     trader.close_stale(opportunities)
+    history_db.snapshot(opportunities)
 
     message = formatter.build_message(top5, opportunities)
     telegram_bot.send(message)

@@ -23,3 +23,7 @@ PAPER_POSITION_SIZE = float(os.getenv("PAPER_POSITION_SIZE", "10000"))   # USDT 
 CLOSE_ARB_SPREAD = float(os.getenv("CLOSE_ARB_SPREAD", "0.0001"))        # close when spread < 0.01%
 MAX_HOLD_HOURS = float(os.getenv("MAX_HOLD_HOURS", "72"))                 # max hold time in hours
 PAPER_TRADE_FILE = os.getenv("PAPER_TRADE_FILE", "paper_positions.json")
+
+# v1.3 spread history
+SPREAD_HISTORY_FILE = os.getenv("SPREAD_HISTORY_FILE", "spread_history.db")
+SPREAD_HISTORY_HOURS = int(os.getenv("SPREAD_HISTORY_HOURS", "168"))  # 7 days

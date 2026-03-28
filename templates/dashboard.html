@@ -159,6 +159,7 @@
         <th>BEven</th>
         <th>Long OI</th>
         <th>Short OI</th>
+        <th>Persist</th>
       </tr>
     </thead>
     <tbody>
@@ -206,11 +207,56 @@
       </td>
       <td style="color:#6e7681">{{ "$%.1fM" | format(o.long_oi_usdt / 1e6) }}</td>
       <td style="color:#6e7681">{{ "$%.1fM" | format(o.short_oi_usdt / 1e6) }}</td>
+      <td>
+        {% if o._trend %}
+          {% if o._trend.is_persistent %}
+            <span class="badge badge-green" title="{{ '%.0f' | format(o._trend.persistence_pct) }}% of {{ o._trend.hours_seen }}h">
+              ✓ {{ "%.0f%%" | format(o._trend.persistence_pct) }}
+            </span>
+          {% else %}
+            <span class="badge badge-red" title="{{ o._trend.hours_seen }}h seen">
+              {{ "%.0f%%" | format(o._trend.persistence_pct) }}
+            </span>
+          {% endif %}
+        {% else %}
+          <span style="color:#6e7681">new</span>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+
+{% if persistent_trends %}
+<div class="section">
+  <div class="section-title">Persistent Spreads (≥50% of tracked window)</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Symbol</th><th>Direction</th><th>Avg Spread</th><th>Min</th><th>Max</th><th>Hours Seen</th><th>Persistence</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for t in persistent_trends %}
+    <tr>
+      <td class="sym">{{ t.symbol }}</td>
+      <td>
+        <span class="ex-long">{{ t.long_exchange | upper }}</span>
+        <span style="color:#6e7681"> → </span>
+        <span class="ex-short">{{ t.short_exchange | upper }}</span>
+      </td>
+      <td class="spread-md">{{ "%.3f%%" | format(t.avg_spread * 100) }}</td>
+      <td style="color:#6e7681">{{ "%.3f%%" | format(t.min_spread * 100) }}</td>
+      <td class="spread-hi">{{ "%.3f%%" | format(t.max_spread * 100) }}</td>
+      <td style="color:#8b949e">{{ t.hours_seen }}h</td>
+      <td><span class="badge badge-green">{{ "%.0f%%" | format(t.persistence_pct) }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 {% if paper_positions %}
 <div class="section paper-section">

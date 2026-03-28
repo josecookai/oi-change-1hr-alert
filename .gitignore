@@ -1,5 +1,6 @@
 .env
 paper_positions.json
+spread_history.db
 __pycache__/
 *.pyc
 *.pyo

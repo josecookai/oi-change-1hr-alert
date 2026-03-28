@@ -27,3 +27,8 @@ PAPER_TRADE_FILE = os.getenv("PAPER_TRADE_FILE", "paper_positions.json")
 # v1.3 spread history
 SPREAD_HISTORY_FILE = os.getenv("SPREAD_HISTORY_FILE", "spread_history.db")
 SPREAD_HISTORY_HOURS = int(os.getenv("SPREAD_HISTORY_HOURS", "168"))  # 7 days
+
+# O4 instant alerts
+ALERT_NEW_SPREAD = float(os.getenv("ALERT_NEW_SPREAD", "0.002"))      # 0.2% threshold for new-pair alert
+ALERT_SPIKE_PCT = float(os.getenv("ALERT_SPIKE_PCT", "50"))            # alert if spread jumps 50%+
+ALERT_MIN_NET_PER_10K = float(os.getenv("ALERT_MIN_NET_PER_10K", "0"))  # must be net positive after fees

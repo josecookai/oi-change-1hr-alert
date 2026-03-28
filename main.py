@@ -7,6 +7,7 @@ import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import analyzer
+import alert_monitor
 import arb_detector
 import formatter
 import paper_trader
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 trader = paper_trader.PaperTrader()
 history_db = spread_history.SpreadHistoryDB()
+arb_monitor = alert_monitor.ArbAlertMonitor()
 
 
 def send_alert() -> None:
@@ -58,6 +60,22 @@ def send_paper_snapshot() -> None:
     logger.info("Paper trade snapshot sent")
 
 
+def check_arb_alerts() -> None:
+    """Every 15m: scan for new/spiked arb opportunities and alert immediately."""
+    data = ws_client.get_latest()
+    if not data:
+        return
+    old_n, old_spread = arb_detector.ARB_TOP_N, arb_detector.MIN_ARB_SPREAD
+    arb_detector.ARB_TOP_N = 999
+    arb_detector.MIN_ARB_SPREAD = 0.0001
+    opportunities = arb_detector.detect(data)
+    arb_detector.ARB_TOP_N = old_n
+    arb_detector.MIN_ARB_SPREAD = old_spread
+    fired = arb_monitor.fire(opportunities)
+    if fired:
+        logger.info("Instant arb alerts fired: %d", fired)
+
+
 def run_bot() -> None:
     logger.info("Starting OI Alert bot (v1.3)...")
     ws_client.start_background()
@@ -66,8 +84,9 @@ def run_bot() -> None:
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(send_alert, "cron", minute=0)
     scheduler.add_job(send_paper_snapshot, "cron", hour="0,8,16")
+    scheduler.add_job(check_arb_alerts, "cron", minute="*/15")
     scheduler.start()
-    logger.info("Scheduler started — OI alert every hour, paper snapshot every 8h")
+    logger.info("Scheduler started — OI alert every hour, paper snapshot every 8h, arb alerts every 15m")
 
     # Keep bot thread alive
     while True:

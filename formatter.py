@@ -41,15 +41,15 @@ def _section(tf: str, contracts: list[dict]) -> str:
 def build_arb_section(opportunities: list[ArbOpportunity]) -> str:
     EX_ABBR = {"binance": "BNB", "bybit": "BYBIT", "hyperliquid": "HL"}
     lines = ["🔀 *Cross-Exchange Arb Opportunities*"]
-    lines.append("`Symbol        Long    Short  Spread  $/10k  Annual`")
+    lines.append("`Symbol        Long   Short  Spread  Net/10k  BEven`")
     for o in opportunities:
         sym = o.symbol[:12].ljust(12)
         long_ex = EX_ABBR.get(o.long_exchange, o.long_exchange[:5]).ljust(5)
         short_ex = EX_ABBR.get(o.short_exchange, o.short_exchange[:5]).ljust(5)
         spread = f"{o.spread_pct:.3f}%".rjust(7)
-        net = f"+${o.net_per_10k_per_interval:.1f}".rjust(6)
-        annual = f"{o.annual_roi_pct:.0f}%".rjust(6)
-        lines.append(f"`{sym} {long_ex} {short_ex} {spread} {net} {annual}`")
+        net = f"+${o.net_per_10k_per_interval:.1f}".rjust(8)
+        beven = f"{o.breakeven_periods:.1f}x".rjust(5)
+        lines.append(f"`{sym} {long_ex} {short_ex} {spread} {net} {beven}`")
     if not opportunities:
         lines.append("_No opportunities above threshold_")
     return "\n".join(lines)

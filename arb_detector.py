@@ -12,15 +12,25 @@ Net per 8h = spread * position_size.
 
 from dataclasses import dataclass
 
-from config import ARB_TOP_N, MIN_ARB_SPREAD
+from config import (
+    ARB_TOP_N,
+    MIN_ARB_SPREAD,
+    TAKER_FEE_BINANCE,
+    TAKER_FEE_BYBIT,
+    TAKER_FEE_HYPERLIQUID,
+)
 
 EXCHANGES = ("binance", "bybit", "hyperliquid")
 
-# Estimated taker fees per side (one-way), fraction
-FEES: dict[str, float] = {
-    "binance": 0.0005,       # 0.05%
-    "bybit": 0.00055,        # 0.055%
-    "hyperliquid": 0.00035,  # 0.035%
+# Taker fees per side (one-way), configurable via .env
+# Source: official fee schedules at VIP0 / base tier (no discount applied)
+#   Binance USDM futures: 0.050%
+#   Bybit USDT perpetual: 0.055%
+#   Hyperliquid:          0.035%
+TAKER_FEES: dict[str, float] = {
+    "binance": TAKER_FEE_BINANCE,
+    "bybit": TAKER_FEE_BYBIT,
+    "hyperliquid": TAKER_FEE_HYPERLIQUID,
 }
 
 
@@ -43,14 +53,27 @@ class ArbOpportunity:
         return self.spread * 100
 
     @property
+    def round_trip_fee_pct(self) -> float:
+        """Total taker fee for entry + exit on both legs (fraction)."""
+        one_way = TAKER_FEES[self.long_exchange] + TAKER_FEES[self.short_exchange]
+        return one_way * 2  # entry + exit
+
+    @property
     def net_per_10k_per_interval(self) -> float:
-        """Net funding received per $10k position per funding interval, after fees."""
+        """
+        Net funding received per $10k position per funding interval, after full
+        round-trip taker fees (open long + open short + close long + close short).
+        """
         gross = self.spread * 10_000
-        # Round-trip fee: entry + exit, both sides (long + short)
-        entry_fee = (FEES[self.long_exchange] + FEES[self.short_exchange]) * 10_000
-        exit_fee = entry_fee
-        # Amortize over one interval (rough approximation: assume 1-period hold)
-        return gross - entry_fee - exit_fee
+        fee_cost = self.round_trip_fee_pct * 10_000
+        return gross - fee_cost
+
+    @property
+    def breakeven_periods(self) -> float:
+        """Number of funding periods needed to recoup round-trip fees."""
+        if self.spread <= 0:
+            return float("inf")
+        return self.round_trip_fee_pct / self.spread
 
     @property
     def annual_roi_pct(self) -> float:

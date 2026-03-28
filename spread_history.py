@@ -53,7 +53,9 @@ class SpreadTrend:
 
 @contextmanager
 def _conn(path: Path):
-    con = sqlite3.connect(str(path))
+    con = sqlite3.connect(str(path), timeout=10)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA busy_timeout=5000")
     con.row_factory = sqlite3.Row
     try:
         yield con
@@ -119,18 +121,25 @@ class SpreadHistoryDB:
         with _conn(self._path) as con:
             rows = con.execute("""
                 SELECT
-                    symbol, long_exchange, short_exchange,
+                    s.symbol, s.long_exchange, s.short_exchange,
                     COUNT(*)                    AS samples,
-                    AVG(spread)                 AS avg_spread,
-                    MIN(spread)                 AS min_spread,
-                    MAX(spread)                 AS max_spread,
-                    MAX(spread) AS latest_spread,
-                    COUNT(DISTINCT (ts / 3600)) AS hours_seen
-                FROM spread_snapshots
-                WHERE ts >= ?
-                GROUP BY symbol, long_exchange, short_exchange
+                    AVG(s.spread)               AS avg_spread,
+                    MIN(s.spread)               AS min_spread,
+                    MAX(s.spread)               AS max_spread,
+                    (
+                        SELECT spread FROM spread_snapshots
+                        WHERE symbol=s.symbol
+                          AND long_exchange=s.long_exchange
+                          AND short_exchange=s.short_exchange
+                          AND ts >= ?
+                        ORDER BY ts DESC LIMIT 1
+                    )                           AS latest_spread,
+                    COUNT(DISTINCT (s.ts / 3600)) AS hours_seen
+                FROM spread_snapshots s
+                WHERE s.ts >= ?
+                GROUP BY s.symbol, s.long_exchange, s.short_exchange
                 ORDER BY avg_spread DESC
-            """, (cutoff,)).fetchall()
+            """, (cutoff, cutoff)).fetchall()
 
         trends = []
         for r in rows:

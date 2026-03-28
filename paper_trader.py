@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,7 +87,10 @@ def _load(path: Path) -> dict:
 
 
 def _save(path: Path, state: dict) -> None:
-    path.write_text(json.dumps(state, indent=2))
+    """Atomic write: write to temp file then rename to avoid corruption."""
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    os.replace(tmp, path)
 
 
 def _entry_fee(long_ex: str, short_ex: str, size: float) -> float:
@@ -100,6 +106,7 @@ def _round_trip_fee(long_ex: str, short_ex: str, size: float) -> float:
 class PaperTrader:
     def __init__(self) -> None:
         self._path = Path(PAPER_TRADE_FILE)
+        self._lock = threading.Lock()
         self._state = _load(self._path)
 
     def _positions(self) -> list[dict]:
@@ -110,35 +117,36 @@ class PaperTrader:
 
     def scan(self, opportunities: list[ArbOpportunity]) -> list[PaperPosition]:
         """Open new positions for opportunities not already held."""
-        opened: list[PaperPosition] = []
-        existing = self._open_symbols()
+        with self._lock:
+            opened: list[PaperPosition] = []
+            existing = self._open_symbols()
 
-        for opp in opportunities:
-            if opp.symbol in existing:
-                continue
+            for opp in opportunities:
+                if opp.symbol in existing:
+                    continue
 
-            fee = _round_trip_fee(opp.long_exchange, opp.short_exchange, PAPER_POSITION_SIZE)
-            pos = PaperPosition(
-                symbol=opp.symbol,
-                long_exchange=opp.long_exchange,
-                short_exchange=opp.short_exchange,
-                entry_spread=opp.spread,
-                entry_time=_now_iso(),
-                position_size_usdt=PAPER_POSITION_SIZE,
-                funding_collected=0.0,
-                fee_paid=fee,
-                funding_periods=0,
-                status="open",
-                close_reason=None,
-                close_time=None,
-                close_spread=None,
-            )
-            self._positions().append(asdict(pos))
-            opened.append(pos)
-            logger.info("Opened paper position: %s spread=%.4f%%", opp.symbol, opp.spread * 100)
+                fee = _round_trip_fee(opp.long_exchange, opp.short_exchange, PAPER_POSITION_SIZE)
+                pos = PaperPosition(
+                    symbol=opp.symbol,
+                    long_exchange=opp.long_exchange,
+                    short_exchange=opp.short_exchange,
+                    entry_spread=opp.spread,
+                    entry_time=_now_iso(),
+                    position_size_usdt=PAPER_POSITION_SIZE,
+                    funding_collected=0.0,
+                    fee_paid=fee,
+                    funding_periods=0,
+                    status="open",
+                    close_reason=None,
+                    close_time=None,
+                    close_spread=None,
+                )
+                self._positions().append(asdict(pos))
+                opened.append(pos)
+                logger.info("Opened paper position: %s spread=%.4f%%", opp.symbol, opp.spread * 100)
 
-        _save(self._path, self._state)
-        return opened
+            _save(self._path, self._state)
+            return opened
 
     def credit_funding(self, live_opps: list[ArbOpportunity]) -> list[PaperPosition]:
         """
@@ -146,60 +154,63 @@ class PaperTrader:
         Uses the current live spread for that symbol if available,
         otherwise uses the entry spread (conservative).
         """
-        live_map = {o.symbol: o for o in live_opps}
-        credited: list[PaperPosition] = []
+        with self._lock:
+            live_map = {o.symbol: o for o in live_opps}
+            credited: list[PaperPosition] = []
 
-        for raw in self._positions():
-            if raw["status"] != "open":
-                continue
-            opp = live_map.get(raw["symbol"])
-            spread = opp.spread if opp else raw["entry_spread"]
-            earned = spread * raw["position_size_usdt"]
-            raw["funding_collected"] += earned
-            raw["funding_periods"] += 1
-            credited.append(PaperPosition(**raw))
-            logger.info(
-                "Credited %s: +$%.2f (spread=%.4f%%, total_net=$%.2f)",
-                raw["symbol"], earned, spread * 100,
-                raw["funding_collected"] - raw["fee_paid"],
-            )
+            for raw in self._positions():
+                if raw["status"] != "open":
+                    continue
+                opp = live_map.get(raw["symbol"])
+                spread = opp.spread if opp else raw["entry_spread"]
+                earned = spread * raw["position_size_usdt"]
+                raw["funding_collected"] += earned
+                raw["funding_periods"] += 1
+                credited.append(PaperPosition(**raw))
+                logger.info(
+                    "Credited %s: +$%.2f (spread=%.4f%%, total_net=$%.2f)",
+                    raw["symbol"], earned, spread * 100,
+                    raw["funding_collected"] - raw["fee_paid"],
+                )
 
-        _save(self._path, self._state)
-        return credited
+            _save(self._path, self._state)
+            return credited
 
     def close_stale(self, live_opps: list[ArbOpportunity]) -> list[PaperPosition]:
         """Close positions where spread collapsed or max hold time exceeded."""
-        live_map = {o.symbol: o for o in live_opps}
-        closed: list[PaperPosition] = []
+        with self._lock:
+            live_map = {o.symbol: o for o in live_opps}
+            closed: list[PaperPosition] = []
 
-        for raw in self._positions():
-            if raw["status"] != "open":
-                continue
+            for raw in self._positions():
+                if raw["status"] != "open":
+                    continue
 
-            pos = PaperPosition(**raw)
-            opp = live_map.get(raw["symbol"])
-            current_spread = opp.spread if opp else 0.0
+                pos = PaperPosition(**raw)
+                opp = live_map.get(raw["symbol"])
+                current_spread = opp.spread if opp else 0.0
 
-            reason = None
-            if current_spread < CLOSE_ARB_SPREAD:
-                reason = f"spread_collapsed ({current_spread * 100:.4f}% < {CLOSE_ARB_SPREAD * 100:.4f}%)"
-            elif pos.hold_hours >= MAX_HOLD_HOURS:
-                reason = f"max_hold ({pos.hold_hours:.1f}h >= {MAX_HOLD_HOURS}h)"
+                reason = None
+                if current_spread < CLOSE_ARB_SPREAD:
+                    reason = f"spread_collapsed ({current_spread * 100:.4f}% < {CLOSE_ARB_SPREAD * 100:.4f}%)"
+                elif pos.hold_hours >= MAX_HOLD_HOURS:
+                    reason = f"max_hold ({pos.hold_hours:.1f}h >= {MAX_HOLD_HOURS}h)"
 
-            if reason:
-                raw["status"] = "closed"
-                raw["close_reason"] = reason
-                raw["close_time"] = _now_iso()
-                raw["close_spread"] = current_spread
-                closed.append(PaperPosition(**raw))
-                logger.info("Closed paper position: %s reason=%s net_pnl=$%.2f", raw["symbol"], reason, PaperPosition(**raw).net_pnl)
+                if reason:
+                    raw["status"] = "closed"
+                    raw["close_reason"] = reason
+                    raw["close_time"] = _now_iso()
+                    raw["close_spread"] = current_spread
+                    closed.append(PaperPosition(**raw))
+                    logger.info("Closed paper position: %s reason=%s net_pnl=$%.2f", raw["symbol"], reason, PaperPosition(**raw).net_pnl)
 
-        _save(self._path, self._state)
-        return closed
+            _save(self._path, self._state)
+            return closed
 
     def snapshot(self) -> dict:
         """Return summary stats across all positions."""
-        all_pos = [PaperPosition(**p) for p in self._positions()]
+        with self._lock:
+            all_pos = [PaperPosition(**p) for p in self._positions()]
         open_pos = [p for p in all_pos if p.status == "open"]
         closed_pos = [p for p in all_pos if p.status == "closed"]
 
@@ -217,3 +228,16 @@ class PaperTrader:
             "win_rate": win_rate,
             "avg_hold_hours": avg_hold,
         }
+
+
+_instance: PaperTrader | None = None
+_instance_lock = threading.Lock()
+
+
+def get_trader() -> PaperTrader:
+    """Return the process-wide singleton PaperTrader instance."""
+    global _instance
+    with _instance_lock:
+        if _instance is None:
+            _instance = PaperTrader()
+        return _instance

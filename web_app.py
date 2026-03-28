@@ -15,9 +15,8 @@ from fastapi.requests import Request
 
 import arb_detector
 import ws_client
-from paper_trader import PaperTrader
+from paper_trader import get_trader
 from spread_history import SpreadHistoryDB
-from config import MIN_ARB_SPREAD, ARB_TOP_N
 
 app = FastAPI(title="OI Monitor Dashboard")
 _BASE = Path(__file__).parent
@@ -26,7 +25,7 @@ _jinja_env = jinja2.Environment(
     autoescape=True,
 )
 
-_trader = PaperTrader()
+_trader = get_trader()
 _history = SpreadHistoryDB()
 
 
@@ -40,21 +39,13 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
     data = ws_client.get_latest()
 
     # Show all opportunities, let JS filter client-side
-    old_n, old_spread = arb_detector.ARB_TOP_N, arb_detector.MIN_ARB_SPREAD
-    arb_detector.ARB_TOP_N = 999
-    arb_detector.MIN_ARB_SPREAD = 0.0001
-    opportunities = arb_detector.detect(data)
-    arb_detector.ARB_TOP_N = old_n
-    arb_detector.MIN_ARB_SPREAD = old_spread
+    opportunities = arb_detector.detect(data, top_n=999, min_spread=0.0001)
 
     # Enrich top 20 with real orderbook slippage
     arb_detector.enrich_with_slippage(opportunities, notional=notional, top_n=20)
 
-    # Attach persistence trend data
+    # Build trend lookup without mutating ArbOpportunity objects
     trend_map = {(t.symbol, t.long_exchange, t.short_exchange): t for t in _history.trends()}
-    for opp in opportunities:
-        key = (opp.symbol, opp.long_exchange, opp.short_exchange)
-        opp._trend = trend_map.get(key)
 
     snap = _trader.snapshot()
     paper_positions = snap["open_positions"] + [
@@ -72,7 +63,7 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
     best = opportunities[0] if opportunities else None
     stats = {
         "total": len(opportunities),
-        "min_spread_pct": f"{arb_detector.MIN_ARB_SPREAD * 100:.2f}",
+        "min_spread_pct": "0.01",
         "best_spread": f"{best.spread_pct:.3f}%" if best else "—",
         "best_symbol": best.symbol if best else "—",
         "net_positive": sum(1 for o in opportunities if o.net_per_10k_per_interval > 0),
@@ -89,6 +80,7 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
 
     html = _jinja_env.get_template("dashboard.html").render(
         opportunities=opportunities,
+        trend_map=trend_map,
         paper_positions=paper_positions,
         persistent_trends=persistent_trends,
         stats=stats,
@@ -101,9 +93,7 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
 async def api_opportunities():
     """JSON endpoint for programmatic access."""
     data = ws_client.get_latest()
-    arb_detector.ARB_TOP_N = 999
-    arb_detector.MIN_ARB_SPREAD = 0.0001
-    opps = arb_detector.detect(data)
+    opps = arb_detector.detect(data, top_n=999, min_spread=0.0001)
     return [
         {
             "symbol": o.symbol,

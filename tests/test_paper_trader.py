@@ -35,9 +35,11 @@ def trader(tmp_path, monkeypatch):
     monkeypatch.setattr(paper_trader, "CLOSE_ARB_SPREAD", 0.0001)
     monkeypatch.setattr(paper_trader, "MAX_HOLD_HOURS", 72.0)
     # Re-init trader so it reads the patched path
+    import threading
     t = PaperTrader.__new__(PaperTrader)
     from pathlib import Path
     t._path = Path(trade_file)
+    t._lock = threading.Lock()
     t._state = {"positions": []}
     return t
 

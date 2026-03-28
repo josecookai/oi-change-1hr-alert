@@ -10,6 +10,7 @@ short on the exchange paying the highest (or most positive) funding.
 Net per 8h = spread * position_size.
 """
 
+import logging
 from dataclasses import dataclass
 
 from config import (
@@ -19,6 +20,8 @@ from config import (
     TAKER_FEE_BYBIT,
     TAKER_FEE_HYPERLIQUID,
 )
+
+logger = logging.getLogger(__name__)
 
 EXCHANGES = ("binance", "bybit", "hyperliquid")
 
@@ -99,11 +102,21 @@ class ArbOpportunity:
         return self.spread * periods_per_year * 100
 
 
-def detect(data: dict) -> list[ArbOpportunity]:
+def detect(
+    data: dict,
+    top_n: int | None = None,
+    min_spread: float | None = None,
+) -> list[ArbOpportunity]:
     """
     Scan latest WebSocket data for funding rate arbitrage opportunities.
-    Returns opportunities sorted by spread descending, filtered by MIN_ARB_SPREAD.
+    Returns opportunities sorted by spread descending.
+
+    top_n / min_spread override module-level defaults without mutating globals,
+    making this safe to call concurrently from multiple threads.
     """
+    effective_top_n = top_n if top_n is not None else ARB_TOP_N
+    effective_min_spread = min_spread if min_spread is not None else MIN_ARB_SPREAD
+
     by_exchange: dict[str, dict[str, dict]] = {}
     for ex in EXCHANGES:
         by_exchange[ex] = {c["symbol"]: c for c in data.get(ex, []) if c.get("symbol")}
@@ -139,7 +152,7 @@ def detect(data: dict) -> list[ArbOpportunity]:
                 long_rate, short_rate = rate_b, rate_a
 
             spread = short_rate - long_rate
-            if spread < MIN_ARB_SPREAD:
+            if spread < effective_min_spread:
                 continue
 
             key = (sym, long_ex, short_ex)
@@ -164,7 +177,7 @@ def detect(data: dict) -> list[ArbOpportunity]:
             ))
 
     opportunities.sort(key=lambda o: o.spread, reverse=True)
-    return opportunities[:ARB_TOP_N]
+    return opportunities[:effective_top_n]
 
 
 def enrich_with_slippage(opportunities: list[ArbOpportunity], notional: float = 10_000, top_n: int = 20) -> None:

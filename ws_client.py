@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 latest_data: dict = {}
 _lock = threading.Lock()
+_started = False
 
 
 def get_latest() -> dict:
@@ -42,7 +43,13 @@ async def _listen() -> None:
 
 
 def start_background() -> None:
-    """Start WebSocket listener in a daemon thread."""
+    """Start WebSocket listener in a daemon thread. Safe to call multiple times."""
+    global _started
+    with _lock:
+        if _started:
+            return
+        _started = True
+
     def run():
         asyncio.run(_listen())
 

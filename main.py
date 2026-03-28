@@ -21,7 +21,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-trader = paper_trader.PaperTrader()
+trader = paper_trader.get_trader()
 history_db = spread_history.SpreadHistoryDB()
 arb_monitor = alert_monitor.ArbAlertMonitor()
 
@@ -65,12 +65,7 @@ def check_arb_alerts() -> None:
     data = ws_client.get_latest()
     if not data:
         return
-    old_n, old_spread = arb_detector.ARB_TOP_N, arb_detector.MIN_ARB_SPREAD
-    arb_detector.ARB_TOP_N = 999
-    arb_detector.MIN_ARB_SPREAD = 0.0001
-    opportunities = arb_detector.detect(data)
-    arb_detector.ARB_TOP_N = old_n
-    arb_detector.MIN_ARB_SPREAD = old_spread
+    opportunities = arb_detector.detect(data, top_n=999, min_spread=0.0001)
     fired = arb_monitor.fire(opportunities)
     if fired:
         logger.info("Instant arb alerts fired: %d", fired)

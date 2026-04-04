@@ -12,6 +12,7 @@ import jinja2
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+import analyzer
 import arb_detector
 import ws_client
 from paper_trader import get_trader
@@ -36,6 +37,9 @@ async def startup():
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(min_spread: float | None = None, notional: float = 10_000):
     data = ws_client.get_latest()
+
+    # OI change tables (15m / 1h / 4h / 24h)
+    top5 = analyzer.top5_by_timeframe(data) if data else {}
 
     # Show all opportunities, let JS filter client-side
     opportunities = arb_detector.detect(data, top_n=999, min_spread=0.0001)
@@ -86,6 +90,7 @@ async def dashboard(min_spread: float | None = None, notional: float = 10_000):
     persistent_trends = _history.top_persistent(min_persistence_pct=50.0, limit=10)
 
     html = _jinja_env.get_template("dashboard.html").render(
+        top5=top5,
         opportunities=opportunities,
         trend_map=trend_map,
         paper_positions=paper_positions,
